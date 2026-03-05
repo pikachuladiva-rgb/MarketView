@@ -101,6 +101,7 @@
         .result-name { font-size: 13px; color: var(--text-secondary); }
         .highlight { color: #2962ff; }
         #menu-overlay { display: none; position: fixed; top: 45px; left: 50px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; padding: 15px; z-index: 150; min-width: 200px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        #indicators-overlay { display: none; position: fixed; top: 45px; left: 300px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; padding: 15px; z-index: 150; min-width: 200px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
         .menu-item { padding: 10px 0; display: flex; justify-content: space-between; align-items: center; color: var(--text-primary); font-size: 14px; }
         .toggle-switch { width: 40px; height: 20px; background: #434651; border-radius: 10px; position: relative; cursor: pointer; transition: background 0.2s; }
         .toggle-switch.active { background: #26a69a; }
@@ -138,6 +139,7 @@
             <div class="timeframe-btn" onclick="changeTimeframe('1mo')">M</div>
             <div class="timeframe-btn">˅</div>
         </div>
+        <div class="timeframe-btn" onclick="toggleIndicators()" style="margin-left: 10px;">Indicators</div>
     </div>
     <div id="menu-overlay">
         <div class="menu-item">
@@ -149,6 +151,26 @@
         <div class="menu-item">
             <span>Drawings panel</span>
             <div class="toggle-switch active" id="drawings-toggle" onclick="toggleDrawings()">
+                <div class="toggle-circle"></div>
+            </div>
+        </div>
+    </div>
+    <div id="indicators-overlay">
+        <div class="menu-item">
+            <span>MA(20)</span>
+            <div class="toggle-switch" id="ma20-toggle" onclick="toggleMA(20)">
+                <div class="toggle-circle"></div>
+            </div>
+        </div>
+        <div class="menu-item">
+            <span>MA(50)</span>
+            <div class="toggle-switch" id="ma50-toggle" onclick="toggleMA(50)">
+                <div class="toggle-circle"></div>
+            </div>
+        </div>
+        <div class="menu-item">
+            <span>MA(200)</span>
+            <div class="toggle-switch" id="ma200-toggle" onclick="toggleMA(200)">
                 <div class="toggle-circle"></div>
             </div>
         </div>
@@ -215,6 +237,12 @@
         let sortColumn = localStorage.getItem('sortColumn') || 'symbol';
         let sortDirection = localStorage.getItem('sortDirection') || 'asc';
 
+        const indicators = {
+            ma20: { name: 'MA(20)', type: 'ma', period: 20, color: 'rgba(38, 166, 154, 0.8)', active: false, series: null },
+            ma50: { name: 'MA(50)', type: 'ma', period: 50, color: 'rgba(255, 152, 0, 0.8)', active: false, series: null },
+            ma200: { name: 'MA(200)', type: 'ma', period: 200, color: 'rgba(239, 83, 80, 0.8)', active: false, series: null }
+        };
+
         const chartEl = document.getElementById('chart');
         const chart = LightweightCharts.createChart(chartEl, {
             layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
@@ -240,6 +268,27 @@
             scaleMargins: {
                 top: 0.8,
                 bottom: 0
+            }
+        });
+
+        // Create line series for each indicator
+        Object.keys(indicators).forEach(key => {
+            indicators[key].series = chart.addLineSeries({
+                color: indicators[key].color,
+                lineWidth: 2,
+                visible: false
+            });
+        });
+
+        // Restore indicator state from localStorage
+        const savedIndicators = JSON.parse(localStorage.getItem('indicators') || '{}');
+        Object.keys(savedIndicators).forEach(key => {
+            if (indicators[key]) {
+                indicators[key].active = savedIndicators[key];
+                indicators[key].series.applyOptions({ visible: savedIndicators[key] });
+                if (savedIndicators[key]) {
+                    document.getElementById(`${key}-toggle`)?.classList.add('active');
+                }
             }
         });
 
@@ -320,6 +369,8 @@
                     changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
                     changeEl.className = change >= 0 ? 'up' : 'down';
                 }
+
+                updateIndicators();
             });
         }
 
@@ -464,6 +515,48 @@
             menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
         }
 
+        function toggleIndicators() {
+            const menu = document.getElementById('indicators-overlay');
+            menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function calculateMA(data, period) {
+            const result = [];
+            for (let i = period - 1; i < data.length; i++) {
+                const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b.close, 0);
+                result.push({ time: data[i].time, value: sum / period });
+            }
+            return result;
+        }
+
+        function updateIndicators() {
+            Object.keys(indicators).forEach(key => {
+                const ind = indicators[key];
+                if (ind.active && ind.type === 'ma') {
+                    const maData = calculateMA(chartData, ind.period);
+                    ind.series.setData(maData);
+                }
+            });
+        }
+
+        function toggleMA(period) {
+            const key = `ma${period}`;
+            indicators[key].active = !indicators[key].active;
+            document.getElementById(`${key}-toggle`).classList.toggle('active');
+            indicators[key].series.applyOptions({ visible: indicators[key].active });
+
+            // Save to localStorage
+            const savedIndicators = {};
+            Object.keys(indicators).forEach(k => {
+                savedIndicators[k] = indicators[k].active;
+            });
+            localStorage.setItem('indicators', JSON.stringify(savedIndicators));
+
+            if (indicators[key].active) {
+                updateIndicators();
+            }
+        }
+
         function toggleTheme() {
             document.body.classList.toggle('light-theme');
             document.getElementById('theme-toggle').classList.toggle('active');
@@ -570,6 +663,7 @@
         document.addEventListener('click', (e) => {
             const overlay = document.getElementById('search-overlay');
             const menu = document.getElementById('menu-overlay');
+            const indicators = document.getElementById('indicators-overlay');
 
             if (overlay.style.display === 'block' && !overlay.contains(e.target) && !e.target.classList.contains('add-symbol') && e.target.id !== 'ticker-btn') {
                 overlay.style.display = 'none';
@@ -578,6 +672,10 @@
 
             if (menu.style.display === 'block' && !menu.contains(e.target) && !e.target.classList.contains('nav-icon')) {
                 menu.style.display = 'none';
+            }
+
+            if (indicators.style.display === 'block' && !indicators.contains(e.target) && e.target.textContent !== 'Indicators') {
+                indicators.style.display = 'none';
             }
         });
 
