@@ -62,12 +62,22 @@
         #watchlist-drawer::-webkit-scrollbar { width: 6px; }
         #watchlist-drawer::-webkit-scrollbar-track { background: transparent; }
         #watchlist-drawer::-webkit-scrollbar-thumb { background: #434651; border-radius: 3px; }
-        .watchlist-header { padding: 12px 15px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
-        .watchlist-title { color: var(--text-secondary); font-size: 12px; text-transform: uppercase; }
+        .watchlist-header { padding: 12px 15px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .watchlist-title { color: var(--text-secondary); font-size: 12px; text-transform: uppercase; flex: 1; }
+        .watchlist-columns { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; padding: 8px 15px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); }
+        .column-header { color: var(--text-secondary); font-size: 11px; text-transform: uppercase; cursor: pointer; user-select: none; }
+        .column-header:hover { color: var(--text-primary); }
+        .column-header.price { text-align: right; padding-right: 24px; }
         .add-symbol { color: #26a69a; cursor: pointer; font-size: 18px; }
         .add-symbol:hover { color: #1f8a7a; }
-        .watchlist-item { padding: 8px 15px; border-bottom: 1px solid var(--border-color); cursor: pointer; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: center; }
+        .watchlist-item { padding: 8px 15px; border-bottom: 1px solid var(--border-color); cursor: pointer; display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; position: relative; border-left: 3px solid transparent; }
         .watchlist-item:hover { background: var(--bg-tertiary); }
+        .watchlist-item.active { border-left-color: #26a69a; background: var(--bg-tertiary); }
+        .watchlist-item:hover .remove-btn { opacity: 1; pointer-events: auto; }
+        .watchlist-symbol { color: var(--text-primary); font-size: 13px; font-weight: bold; }
+        .watchlist-price { color: var(--text-primary); font-size: 13px; text-align: right; padding-right: 24px; }
+        .remove-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); cursor: pointer; font-size: 16px; opacity: 0; transition: opacity 0.2s; padding: 4px; pointer-events: none; }
+        .remove-btn:hover { color: #ef5350; }
         .watchlist-symbol { color: var(--text-primary); font-size: 13px; font-weight: bold; }
         .watchlist-price { font-size: 13px; text-align: right; }
         .watchlist-change { font-size: 13px; text-align: right; }
@@ -147,33 +157,14 @@
         <div id="watchlist-drawer" class="is-open">
             <div class="watchlist-header">
                 <span class="watchlist-title">Watchlist</span>
-                <span class="add-symbol" onclick="openSearch()">+</span>
+                <span class="add-symbol" onclick="openSearchForAdd()">+</span>
             </div>
-            <div class="watchlist-item" onclick="selectFromWatchlist('AAPL')">
-                <div class="watchlist-symbol">AAPL</div>
-                <div class="watchlist-price up">178.52</div>
-                <div class="watchlist-change up">+1.2%</div>
+            <div class="watchlist-columns">
+                <div class="column-header" onclick="sortByColumn('symbol')">Symbol <span id="sort-symbol"></span></div>
+                <div class="column-header price" onclick="sortByColumn('price')">Price <span id="sort-price"></span></div>
+                <div></div>
             </div>
-            <div class="watchlist-item" onclick="selectFromWatchlist('TSLA')">
-                <div class="watchlist-symbol">TSLA</div>
-                <div class="watchlist-price down">242.18</div>
-                <div class="watchlist-change down">-0.8%</div>
-            </div>
-            <div class="watchlist-item" onclick="selectFromWatchlist('MSFT')">
-                <div class="watchlist-symbol">MSFT</div>
-                <div class="watchlist-price up">412.35</div>
-                <div class="watchlist-change up">+0.5%</div>
-            </div>
-            <div class="watchlist-item" onclick="selectFromWatchlist('GOOGL')">
-                <div class="watchlist-symbol">GOOGL</div>
-                <div class="watchlist-price up">142.67</div>
-                <div class="watchlist-change up">+1.1%</div>
-            </div>
-            <div class="watchlist-item" onclick="selectFromWatchlist('AMZN')">
-                <div class="watchlist-symbol">AMZN</div>
-                <div class="watchlist-price down">178.92</div>
-                <div class="watchlist-change down">-0.3%</div>
-            </div>
+            <div id="watchlist-content"></div>
         </div>
         <div id="icon-rail">
             <div class="rail-icon" onclick="toggleWatchlist()" title="Watchlist">☰</div>
@@ -217,11 +208,16 @@
         let currentResults = [];
         let watchlistVisible = true;
         let drawingsVisible = true;
+        let watchlist = JSON.parse(localStorage.getItem('watchlist')) || ['NVDA', 'AAPL', 'TSLA', 'MSFT', 'GOOGL'];
+        let addMode = false;
+        let watchlistPrices = {};
+        let sortColumn = localStorage.getItem('sortColumn') || 'symbol';
+        let sortDirection = localStorage.getItem('sortDirection') || 'asc';
 
         const chartEl = document.getElementById('chart');
         const chart = LightweightCharts.createChart(chartEl, {
             layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
-            grid: { vertLines: { color: '#2a2e39' }, horzLines: { color: '#2a2e39' } },
+            grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
             width: window.innerWidth - 400,
             height: window.innerHeight - 45,
             timeScale: { timeVisible: true, secondsVisible: false }
@@ -277,10 +273,10 @@
             fetch('/data/' + ticker).then(r => r.json()).then(data => {
                 chartData = data;
                 candleSeries.setData(data);
-                chart.timeScale().fitContent();
                 currentTicker = ticker.toUpperCase();
                 document.getElementById('ticker-btn').textContent = currentTicker;
                 document.getElementById('legend-ticker').textContent = currentTicker;
+                renderWatchlist();
 
                 // Update legend with latest candle
                 if (data.length > 0) {
@@ -302,6 +298,87 @@
 
         function selectFromWatchlist(ticker) {
             loadTicker(ticker);
+        }
+
+        function renderWatchlist() {
+            const content = document.getElementById('watchlist-content');
+
+            let sorted = [...watchlist];
+            if (sortColumn === 'symbol') {
+                sorted.sort((a, b) => sortDirection === 'asc' ? a.localeCompare(b) : b.localeCompare(a));
+            } else if (sortColumn === 'price') {
+                sorted.sort((a, b) => {
+                    const priceA = watchlistPrices[a] || 0;
+                    const priceB = watchlistPrices[b] || 0;
+                    return sortDirection === 'asc' ? priceA - priceB : priceB - priceA;
+                });
+            }
+
+            content.innerHTML = sorted.map(ticker => {
+                const price = watchlistPrices[ticker];
+                const priceText = price ? price.toFixed(2) : '—';
+                return `
+                    <div class="watchlist-item ${ticker === currentTicker ? 'active' : ''}" onclick="selectFromWatchlist('${ticker}')">
+                        <div class="watchlist-symbol">${ticker}</div>
+                        <div class="watchlist-price">${priceText}</div>
+                        <span class="remove-btn" onclick="event.stopPropagation(); removeFromWatchlist('${ticker}')">×</span>
+                    </div>
+                `;
+            }).join('');
+
+            updateSortIndicators();
+        }
+
+        function updateSortIndicators() {
+            document.getElementById('sort-symbol').textContent = sortColumn === 'symbol' ? (sortDirection === 'asc' ? '↑' : '↓') : '';
+            document.getElementById('sort-price').textContent = sortColumn === 'price' ? (sortDirection === 'asc' ? '↑' : '↓') : '';
+        }
+
+        function sortByColumn(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            localStorage.setItem('sortColumn', sortColumn);
+            localStorage.setItem('sortDirection', sortDirection);
+            renderWatchlist();
+        }
+
+        function fetchWatchlistPrices() {
+            watchlist.forEach(ticker => {
+                fetch('/data/' + ticker)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.length > 0) {
+                            watchlistPrices[ticker] = data[data.length - 1].close;
+                            renderWatchlist();
+                        }
+                    })
+                    .catch(() => {});
+            });
+        }
+
+        function addToWatchlist(ticker) {
+            if (!watchlist.includes(ticker)) {
+                watchlist.push(ticker);
+                localStorage.setItem('watchlist', JSON.stringify(watchlist));
+                renderWatchlist();
+                fetchWatchlistPrices();
+            }
+        }
+
+        function removeFromWatchlist(ticker) {
+            watchlist = watchlist.filter(t => t !== ticker);
+            localStorage.setItem('watchlist', JSON.stringify(watchlist));
+            delete watchlistPrices[ticker];
+            renderWatchlist();
+        }
+
+        function openSearchForAdd() {
+            addMode = true;
+            openSearch();
         }
 
         function highlightPrefix(text, prefix) {
@@ -331,7 +408,12 @@
         }
 
         function selectTicker(ticker) {
-            loadTicker(ticker);
+            if (addMode) {
+                addToWatchlist(ticker);
+                addMode = false;
+            } else {
+                loadTicker(ticker);
+            }
             document.getElementById('search-overlay').style.display = 'none';
         }
 
@@ -380,8 +462,8 @@
                     textColor: isDark ? '#d1d4dc' : '#131722'
                 },
                 grid: {
-                    vertLines: { color: isDark ? '#2a2e39' : '#e0e3eb' },
-                    horzLines: { color: isDark ? '#2a2e39' : '#e0e3eb' }
+                    vertLines: { color: isDark ? '#1e222d' : '#f0f3fa' },
+                    horzLines: { color: isDark ? '#1e222d' : '#f0f3fa' }
                 }
             });
         }
@@ -457,6 +539,7 @@
 
             if (overlay.style.display === 'block' && !overlay.contains(e.target) && !e.target.classList.contains('add-symbol') && e.target.id !== 'ticker-btn') {
                 overlay.style.display = 'none';
+                addMode = false;
             }
 
             if (menu.style.display === 'block' && !menu.contains(e.target) && !e.target.classList.contains('nav-icon')) {
@@ -482,6 +565,8 @@
             toggleDrawings();
         }
 
+        renderWatchlist();
+        fetchWatchlistPrices();
         loadTicker('NVDA');
     </script>
 </body>
