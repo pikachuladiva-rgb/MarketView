@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Chart</title>
-    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/js/lightweight-charts.standalone.production.js"></script>
     <style>
         :root {
             --bg-primary: #131722;
@@ -133,9 +133,9 @@
         <div class="nav-icon" title="Menu" onclick="toggleMenu()">☰</div>
         <div id="ticker-btn" onclick="openSearch()">NVDA</div>
         <div class="timeframe-group">
-            <div class="timeframe-btn active">D</div>
-            <div class="timeframe-btn">W</div>
-            <div class="timeframe-btn">M</div>
+            <div class="timeframe-btn active" onclick="changeTimeframe('1d')">D</div>
+            <div class="timeframe-btn" onclick="changeTimeframe('1w')">W</div>
+            <div class="timeframe-btn" onclick="changeTimeframe('1mo')">M</div>
             <div class="timeframe-btn">˅</div>
         </div>
     </div>
@@ -203,6 +203,7 @@
             'AAPL':'Apple Inc','MSFT':'Microsoft Corp','GOOGL':'Alphabet Inc','AMZN':'Amazon.com Inc','NVDA':'NVIDIA Corp','TSLA':'Tesla Inc','META':'Meta Platforms','V':'Visa Inc','JPM':'JPMorgan Chase','MA':'Mastercard Inc','WMT':'Walmart Inc','JNJ':'Johnson & Johnson','PG':'Procter & Gamble','UNH':'UnitedHealth Group','HD':'Home Depot','DIS':'Walt Disney Co','BAC':'Bank of America','ADBE':'Adobe Inc','CRM':'Salesforce Inc','NFLX':'Netflix Inc','CSCO':'Cisco Systems','PFE':'Pfizer Inc','TMO':'Thermo Fisher','COST':'Costco Wholesale','AVGO':'Broadcom Inc','ABT':'Abbott Labs','MRK':'Merck & Co','ORCL':'Oracle Corp','ACN':'Accenture PLC','NKE':'Nike Inc','LLY':'Eli Lilly','INTC':'Intel Corp','AMD':'Advanced Micro Devices','QCOM':'Qualcomm Inc','TXN':'Texas Instruments','HON':'Honeywell Intl','UNP':'Union Pacific','NEE':'NextEra Energy','LOW':'Lowe\'s Companies','IBM':'IBM Corp','BA':'Boeing Co','GE':'General Electric','CAT':'Caterpillar Inc','GS':'Goldman Sachs','AXP':'American Express','MMM':'3M Company','CVX':'Chevron Corp','XOM':'Exxon Mobil'
         };
         let currentTicker = 'NVDA';
+        let currentTimeframe = '1d';
         let debounceTimer;
         let activeIndex = -1;
         let currentResults = [];
@@ -227,6 +228,19 @@
             upColor: '#26a69a', downColor: '#ef5350',
             borderUpColor: '#26a69a', borderDownColor: '#ef5350',
             wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+        });
+
+        const volumeSeries = chart.addHistogramSeries({
+            color: '#26a69a',
+            priceFormat: { type: 'volume' },
+            priceScaleId: ''
+        });
+
+        chart.priceScale('').applyOptions({
+            scaleMargins: {
+                top: 0.8,
+                bottom: 0
+            }
         });
 
         let chartData = [];
@@ -262,20 +276,33 @@
             // Find volume for this time
             const vol = volumeData.find(v => v.time === param.time);
             if (vol) {
-                const volK = (vol.value / 1000).toFixed(2);
-                document.getElementById('legend-vol').textContent = volK + ' K';
+                let volText;
+                if (vol.value >= 1e9) {
+                    volText = (vol.value / 1e9).toFixed(2) + ' B';
+                } else if (vol.value >= 1e6) {
+                    volText = (vol.value / 1e6).toFixed(2) + ' M';
+                } else if (vol.value >= 1e3) {
+                    volText = (vol.value / 1e3).toFixed(2) + ' K';
+                } else {
+                    volText = vol.value.toString();
+                }
+                document.getElementById('legend-vol').textContent = volText;
             }
         }
 
         chart.subscribeCrosshairMove(updateLegend);
 
-        function loadTicker(ticker) {
-            fetch('/data/' + ticker).then(r => r.json()).then(data => {
+        function loadTicker(ticker, timeframe = currentTimeframe) {
+            fetch(`/data/${ticker}?timeframe=${timeframe}`).then(r => r.json()).then(data => {
                 chartData = data;
+                volumeData = data.map(d => ({ time: d.time, value: d.volume, color: d.close >= d.open ? '#26a69a80' : '#ef535080' }));
                 candleSeries.setData(data);
+                volumeSeries.setData(volumeData);
                 currentTicker = ticker.toUpperCase();
+                currentTimeframe = timeframe;
                 document.getElementById('ticker-btn').textContent = currentTicker;
                 document.getElementById('legend-ticker').textContent = currentTicker;
+                document.getElementById('legend-timeframe').textContent = timeframe === '1d' ? '1D' : timeframe === '1w' ? '1W' : '1M';
                 renderWatchlist();
 
                 // Update legend with latest candle
@@ -452,6 +479,13 @@
             document.getElementById('drawings-toggle').classList.toggle('active');
             updateChartSize();
             localStorage.setItem('drawingsVisible', drawingsVisible);
+        }
+
+        function changeTimeframe(timeframe) {
+            currentTimeframe = timeframe;
+            document.querySelectorAll('.timeframe-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            loadTicker(currentTicker, timeframe);
         }
 
         function updateChartTheme() {
