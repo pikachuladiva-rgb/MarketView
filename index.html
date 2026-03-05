@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Chart</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        :root {
+            --bg-primary: #131722;
+            --bg-secondary: #1e222d;
+            --bg-tertiary: #2a2e39;
+            --text-primary: #d1d4dc;
+            --text-secondary: #6a6e79;
+            --border-color: #2a2e39;
+            --chart-bg: #131722;
+        }
+        body.light-theme {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f0f3fa;
+            --bg-tertiary: #e0e3eb;
+            --text-primary: #131722;
+            --text-secondary: #787b86;
+            --border-color: #e0e3eb;
+            --chart-bg: #ffffff;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: var(--bg-primary); font-family: sans-serif; overflow: hidden; transition: background 0.2s; }
+        #chart { height: calc(100vh - 45px); margin-left: 50px; margin-top: 45px; transition: width 0.3s, margin-left 0.3s; position: relative; }
+        #chart-legend { position: absolute; top: 12px; left: 12px; z-index: 10; background: rgba(19, 23, 34, 0.8); padding: 8px 12px; border-radius: 4px; font-size: 13px; line-height: 1.6; pointer-events: none; }
+        body.light-theme #chart-legend { background: rgba(255, 255, 255, 0.9); }
+        .legend-row { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+        .legend-separator { color: var(--text-secondary); }
+        .market-status { width: 8px; height: 8px; border-radius: 50%; background: #26a69a; margin-left: 4px; }
+        .legend-label { color: var(--text-secondary); font-size: 11px; margin-right: 2px; }
+        .legend-ohlc span:not(.legend-label) { color: var(--text-primary); font-weight: 500; }
+        #legend-change { font-weight: 600; }
+        #legend-change.up { color: #26a69a; }
+        #legend-change.down { color: #ef5350; }
+        #legend-ticker { color: var(--text-primary); font-weight: 600; font-size: 14px; }
+        #legend-timeframe { color: var(--text-secondary); font-size: 12px; }
+        .legend-volume { color: var(--text-secondary); font-size: 12px; }
+        #toolbar { position: fixed; left: 0; top: 45px; width: 50px; height: calc(100vh - 45px); background: var(--bg-secondary); border-right: 1px solid var(--border-color); z-index: 60; display: flex; flex-direction: column; align-items: center; padding: 10px 0; transition: transform 0.2s; }
+        #topnav { position: fixed; top: 0; left: 0; right: 0; height: 45px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); z-index: 55; display: flex; align-items: center; gap: 10px; padding: 0 15px; }
+        .nav-icon { color: var(--text-secondary); cursor: pointer; padding: 8px; font-size: 18px; border-radius: 4px; }
+        .nav-icon:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        #ticker-btn { color: var(--text-primary); font-size: 14px; font-weight: 600; cursor: pointer; padding: 6px 12px; background: var(--bg-tertiary); border-radius: 4px; }
+        #ticker-btn:hover { background: #434651; }
+        .timeframe-group { display: flex; gap: 2px; }
+        .timeframe-btn { color: var(--text-secondary); cursor: pointer; padding: 6px 10px; font-size: 13px; border-radius: 4px; background: transparent; }
+        .timeframe-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .timeframe-btn.active { background: var(--bg-tertiary); color: var(--text-primary); }
+        .toolbar-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); cursor: pointer; border-radius: 4px; margin: 4px 0; font-size: 18px; }
+        .toolbar-icon:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .toolbar-icon.active { background: var(--bg-tertiary); color: #26a69a; }
+        .toolbar-divider { width: 30px; height: 1px; background: var(--bg-tertiary); margin: 8px 0; }
+        .right-layout-wrapper { position: fixed; top: 45px; right: 0; height: calc(100vh - 45px); display: flex; flex-direction: row; z-index: 50; }
+        #watchlist-drawer { width: 300px; background: var(--bg-secondary); border-left: 1px solid var(--border-color); transition: width 0.3s; overflow: hidden; display: flex; flex-direction: column; }
+        #watchlist-drawer:not(.is-open) { width: 0; border-left: none; }
+        #icon-rail { width: 50px; background: var(--bg-secondary); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; align-items: center; padding-top: 10px; }
+        .rail-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); cursor: pointer; border-radius: 4px; font-size: 18px; }
+        .rail-icon:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        #watchlist-drawer::-webkit-scrollbar { width: 6px; }
+        #watchlist-drawer::-webkit-scrollbar-track { background: transparent; }
+        #watchlist-drawer::-webkit-scrollbar-thumb { background: #434651; border-radius: 3px; }
+        .watchlist-header { padding: 12px 15px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .watchlist-title { color: var(--text-secondary); font-size: 12px; text-transform: uppercase; }
+        .add-symbol { color: #26a69a; cursor: pointer; font-size: 18px; }
+        .add-symbol:hover { color: #1f8a7a; }
+        .watchlist-item { padding: 8px 15px; border-bottom: 1px solid var(--border-color); cursor: pointer; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: center; }
+        .watchlist-item:hover { background: var(--bg-tertiary); }
+        .watchlist-symbol { color: var(--text-primary); font-size: 13px; font-weight: bold; }
+        .watchlist-price { font-size: 13px; text-align: right; }
+        .watchlist-change { font-size: 13px; text-align: right; }
+        .up { color: #26a69a; }
+        .down { color: #ef5350; }
+        #search-overlay { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg-secondary); padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 200; width: 500px; }
+        #search-box { position: relative; }
+        #search-input { background: var(--bg-tertiary); border: 1px solid #434651; color: var(--text-primary); padding: 10px 40px 10px 15px; font-size: 16px; width: 100%; border-radius: 4px; }
+        #search-input:focus { outline: none; border-color: #26a69a; }
+        #clear-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); cursor: pointer; font-size: 18px; display: none; }
+        #clear-btn:hover { color: var(--text-primary); }
+        #results { margin-top: 10px; max-height: 400px; overflow-y: auto; }
+        #results::-webkit-scrollbar { width: 8px; }
+        #results::-webkit-scrollbar-track { background: transparent; }
+        #results::-webkit-scrollbar-thumb { background: #434651; border-radius: 4px; }
+        #results::-webkit-scrollbar-thumb:hover { background: #6a6e79; }
+        .result-item { padding: 8px 15px; cursor: pointer; color: var(--text-primary); border-radius: 4px; display: flex; align-items: center; gap: 12px; border: 1px solid transparent; }
+        .result-item:hover { background: var(--bg-tertiary); }
+        .result-item.active { background: var(--bg-tertiary); border-color: #26a69a; }
+        .result-ticker { font-weight: bold; font-size: 15px; min-width: 80px; }
+        .result-name { font-size: 13px; color: var(--text-secondary); }
+        .highlight { color: #2962ff; }
+        #menu-overlay { display: none; position: fixed; top: 45px; left: 50px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; padding: 15px; z-index: 150; min-width: 200px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .menu-item { padding: 10px 0; display: flex; justify-content: space-between; align-items: center; color: var(--text-primary); font-size: 14px; }
+        .toggle-switch { width: 40px; height: 20px; background: #434651; border-radius: 10px; position: relative; cursor: pointer; transition: background 0.2s; }
+        .toggle-switch.active { background: #26a69a; }
+        .toggle-circle { width: 16px; height: 16px; background: white; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: left 0.2s; }
+        .toggle-switch.active .toggle-circle { left: 22px; }
+        #toolbar.hidden { transform: translateX(-50px); }
+        #chart.no-toolbar { margin-left: 0; }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <div class="toolbar-icon active" title="Crosshair">+</div>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-icon" title="Trend Line">/</div>
+        <div class="toolbar-icon" title="Fibonacci">≋</div>
+        <div class="toolbar-icon" title="Patterns">◇</div>
+        <div class="toolbar-icon" title="Prediction">↗</div>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-icon" title="Brush">✎</div>
+        <div class="toolbar-icon" title="Text">T</div>
+        <div class="toolbar-icon" title="Icons">☺</div>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-icon" title="Ruler">📏</div>
+        <div class="toolbar-icon" title="Magnet">🧲</div>
+        <div class="toolbar-icon" title="Lock">🔒</div>
+        <div class="toolbar-icon" title="Hide">👁</div>
+        <div class="toolbar-icon" title="Delete">🗑</div>
+    </div>
+    <div id="topnav">
+        <div class="nav-icon" title="Menu" onclick="toggleMenu()">☰</div>
+        <div id="ticker-btn" onclick="openSearch()">NVDA</div>
+        <div class="timeframe-group">
+            <div class="timeframe-btn active">D</div>
+            <div class="timeframe-btn">W</div>
+            <div class="timeframe-btn">M</div>
+            <div class="timeframe-btn">˅</div>
+        </div>
+    </div>
+    <div id="menu-overlay">
+        <div class="menu-item">
+            <span>Dark theme</span>
+            <div class="toggle-switch active" id="theme-toggle" onclick="toggleTheme()">
+                <div class="toggle-circle"></div>
+            </div>
+        </div>
+        <div class="menu-item">
+            <span>Drawings panel</span>
+            <div class="toggle-switch active" id="drawings-toggle" onclick="toggleDrawings()">
+                <div class="toggle-circle"></div>
+            </div>
+        </div>
+    </div>
+    <div class="right-layout-wrapper">
+        <div id="watchlist-drawer" class="is-open">
+            <div class="watchlist-header">
+                <span class="watchlist-title">Watchlist</span>
+                <span class="add-symbol" onclick="openSearch()">+</span>
+            </div>
+            <div class="watchlist-item" onclick="selectFromWatchlist('AAPL')">
+                <div class="watchlist-symbol">AAPL</div>
+                <div class="watchlist-price up">178.52</div>
+                <div class="watchlist-change up">+1.2%</div>
+            </div>
+            <div class="watchlist-item" onclick="selectFromWatchlist('TSLA')">
+                <div class="watchlist-symbol">TSLA</div>
+                <div class="watchlist-price down">242.18</div>
+                <div class="watchlist-change down">-0.8%</div>
+            </div>
+            <div class="watchlist-item" onclick="selectFromWatchlist('MSFT')">
+                <div class="watchlist-symbol">MSFT</div>
+                <div class="watchlist-price up">412.35</div>
+                <div class="watchlist-change up">+0.5%</div>
+            </div>
+            <div class="watchlist-item" onclick="selectFromWatchlist('GOOGL')">
+                <div class="watchlist-symbol">GOOGL</div>
+                <div class="watchlist-price up">142.67</div>
+                <div class="watchlist-change up">+1.1%</div>
+            </div>
+            <div class="watchlist-item" onclick="selectFromWatchlist('AMZN')">
+                <div class="watchlist-symbol">AMZN</div>
+                <div class="watchlist-price down">178.92</div>
+                <div class="watchlist-change down">-0.3%</div>
+            </div>
+        </div>
+        <div id="icon-rail">
+            <div class="rail-icon" onclick="toggleWatchlist()" title="Watchlist">☰</div>
+        </div>
+    </div>
+    <div id="search-overlay">
+        <div id="search-box">
+            <input id="search-input" placeholder="Search symbol...">
+            <span id="clear-btn">×</span>
+        </div>
+        <div id="results"></div>
+    </div>
+    <div id="chart">
+        <div id="chart-legend">
+            <div class="legend-row">
+                <span id="legend-ticker">NVDA</span>
+                <span class="legend-separator">·</span>
+                <span id="legend-timeframe">1D</span>
+                <span class="market-status"></span>
+            </div>
+            <div class="legend-row legend-ohlc">
+                <span class="legend-label">O</span><span id="legend-open">—</span>
+                <span class="legend-label">H</span><span id="legend-high">—</span>
+                <span class="legend-label">L</span><span id="legend-low">—</span>
+                <span class="legend-label">C</span><span id="legend-close">—</span>
+                <span id="legend-change">—</span>
+            </div>
+            <div class="legend-row legend-volume">
+                <span class="legend-label">Vol</span>
+                <span id="legend-vol">—</span>
+            </div>
+        </div>
+    </div>
+    <script>
+        const symbolMap = {
+            'AAPL':'Apple Inc','MSFT':'Microsoft Corp','GOOGL':'Alphabet Inc','AMZN':'Amazon.com Inc','NVDA':'NVIDIA Corp','TSLA':'Tesla Inc','META':'Meta Platforms','V':'Visa Inc','JPM':'JPMorgan Chase','MA':'Mastercard Inc','WMT':'Walmart Inc','JNJ':'Johnson & Johnson','PG':'Procter & Gamble','UNH':'UnitedHealth Group','HD':'Home Depot','DIS':'Walt Disney Co','BAC':'Bank of America','ADBE':'Adobe Inc','CRM':'Salesforce Inc','NFLX':'Netflix Inc','CSCO':'Cisco Systems','PFE':'Pfizer Inc','TMO':'Thermo Fisher','COST':'Costco Wholesale','AVGO':'Broadcom Inc','ABT':'Abbott Labs','MRK':'Merck & Co','ORCL':'Oracle Corp','ACN':'Accenture PLC','NKE':'Nike Inc','LLY':'Eli Lilly','INTC':'Intel Corp','AMD':'Advanced Micro Devices','QCOM':'Qualcomm Inc','TXN':'Texas Instruments','HON':'Honeywell Intl','UNP':'Union Pacific','NEE':'NextEra Energy','LOW':'Lowe\'s Companies','IBM':'IBM Corp','BA':'Boeing Co','GE':'General Electric','CAT':'Caterpillar Inc','GS':'Goldman Sachs','AXP':'American Express','MMM':'3M Company','CVX':'Chevron Corp','XOM':'Exxon Mobil'
+        };
+        let currentTicker = 'NVDA';
+        let debounceTimer;
+        let activeIndex = -1;
+        let currentResults = [];
+        let watchlistVisible = true;
+        let drawingsVisible = true;
+
+        const chartEl = document.getElementById('chart');
+        const chart = LightweightCharts.createChart(chartEl, {
+            layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#2a2e39' }, horzLines: { color: '#2a2e39' } },
+            width: window.innerWidth - 400,
+            height: window.innerHeight - 45,
+            timeScale: { timeVisible: true, secondsVisible: false }
+        });
+
+        const candleSeries = chart.addCandlestickSeries({
+            upColor: '#26a69a', downColor: '#ef5350',
+            borderUpColor: '#26a69a', borderDownColor: '#ef5350',
+            wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+        });
+
+        let chartData = [];
+        let volumeData = [];
+
+        function updateLegend(param) {
+            if (!param || !param.time || !chartData.length) {
+                return;
+            }
+
+            const data = param.seriesData.get(candleSeries);
+            if (!data) return;
+
+            const open = data.open;
+            const high = data.high;
+            const low = data.low;
+            const close = data.close;
+
+            // Calculate change from open
+            const change = close - open;
+            const changePercent = (change / open) * 100;
+
+            document.getElementById('legend-open').textContent = open.toFixed(2);
+            document.getElementById('legend-high').textContent = high.toFixed(2);
+            document.getElementById('legend-low').textContent = low.toFixed(2);
+            document.getElementById('legend-close').textContent = close.toFixed(2);
+
+            const changeEl = document.getElementById('legend-change');
+            const changeText = `${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
+            changeEl.textContent = changeText;
+            changeEl.className = change >= 0 ? 'up' : 'down';
+
+            // Find volume for this time
+            const vol = volumeData.find(v => v.time === param.time);
+            if (vol) {
+                const volK = (vol.value / 1000).toFixed(2);
+                document.getElementById('legend-vol').textContent = volK + ' K';
+            }
+        }
+
+        chart.subscribeCrosshairMove(updateLegend);
+
+        function loadTicker(ticker) {
+            fetch('/data/' + ticker).then(r => r.json()).then(data => {
+                chartData = data;
+                candleSeries.setData(data);
+                chart.timeScale().fitContent();
+                currentTicker = ticker.toUpperCase();
+                document.getElementById('ticker-btn').textContent = currentTicker;
+                document.getElementById('legend-ticker').textContent = currentTicker;
+
+                // Update legend with latest candle
+                if (data.length > 0) {
+                    const latest = data[data.length - 1];
+                    const change = latest.close - latest.open;
+                    const changePercent = (change / latest.open) * 100;
+
+                    document.getElementById('legend-open').textContent = latest.open.toFixed(2);
+                    document.getElementById('legend-high').textContent = latest.high.toFixed(2);
+                    document.getElementById('legend-low').textContent = latest.low.toFixed(2);
+                    document.getElementById('legend-close').textContent = latest.close.toFixed(2);
+
+                    const changeEl = document.getElementById('legend-change');
+                    changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
+                    changeEl.className = change >= 0 ? 'up' : 'down';
+                }
+            });
+        }
+
+        function selectFromWatchlist(ticker) {
+            loadTicker(ticker);
+        }
+
+        function highlightPrefix(text, prefix) {
+            const idx = text.toUpperCase().indexOf(prefix.toUpperCase());
+            if (idx === -1) return text;
+            return text.slice(0, idx) + '<span class="highlight">' + text.slice(idx, idx + prefix.length) + '</span>' + text.slice(idx + prefix.length);
+        }
+
+        function updateActiveItem() {
+            document.querySelectorAll('.result-item').forEach((el, i) => {
+                el.classList.toggle('active', i === activeIndex);
+                if (i === activeIndex) el.scrollIntoView({ block: 'nearest' });
+            });
+        }
+
+        function showResults(query) {
+            const symbols = Object.keys(symbolMap);
+            currentResults = symbols.filter(s => s.startsWith(query.toUpperCase())).slice(0, 10);
+            activeIndex = -1;
+            const html = currentResults.map((s, i) => `
+                <div class="result-item" data-index="${i}" onclick="selectTicker('${s}')">
+                    <div class="result-ticker">${highlightPrefix(s, query)}</div>
+                    <div class="result-name">${symbolMap[s]}</div>
+                </div>
+            `).join('');
+            document.getElementById('results').innerHTML = html;
+        }
+
+        function selectTicker(ticker) {
+            loadTicker(ticker);
+            document.getElementById('search-overlay').style.display = 'none';
+        }
+
+        function openSearch(initialKey = '') {
+            document.getElementById('search-overlay').style.display = 'block';
+            const input = document.getElementById('search-input');
+            input.value = initialKey;
+            input.focus();
+            document.getElementById('clear-btn').style.display = initialKey ? 'block' : 'none';
+            if (initialKey) showResults(initialKey);
+        }
+
+        function toggleWatchlist() {
+            watchlistVisible = !watchlistVisible;
+            document.getElementById('watchlist-drawer').classList.toggle('is-open');
+            updateChartSize();
+        }
+
+        function toggleMenu() {
+            const menu = document.getElementById('menu-overlay');
+            menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('light-theme');
+            document.getElementById('theme-toggle').classList.toggle('active');
+            const isDark = !document.body.classList.contains('light-theme');
+            localStorage.setItem('darkTheme', isDark);
+            updateChartTheme();
+        }
+
+        function toggleDrawings() {
+            drawingsVisible = !drawingsVisible;
+            document.getElementById('toolbar').classList.toggle('hidden');
+            chartEl.classList.toggle('no-toolbar');
+            document.getElementById('drawings-toggle').classList.toggle('active');
+            updateChartSize();
+            localStorage.setItem('drawingsVisible', drawingsVisible);
+        }
+
+        function updateChartTheme() {
+            const isDark = !document.body.classList.contains('light-theme');
+            chart.applyOptions({
+                layout: {
+                    background: { color: isDark ? '#131722' : '#ffffff' },
+                    textColor: isDark ? '#d1d4dc' : '#131722'
+                },
+                grid: {
+                    vertLines: { color: isDark ? '#2a2e39' : '#e0e3eb' },
+                    horzLines: { color: isDark ? '#2a2e39' : '#e0e3eb' }
+                }
+            });
+        }
+
+        function updateChartSize() {
+            const baseWidth = drawingsVisible ? 50 : 0;
+            const rightWidth = watchlistVisible ? 350 : 50;
+            const width = window.innerWidth - baseWidth - rightWidth;
+            chart.applyOptions({ width });
+        }
+
+        document.getElementById('search-input').oninput = (e) => {
+            const val = e.target.value;
+            document.getElementById('clear-btn').style.display = val ? 'block' : 'none';
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                const query = val.trim();
+                if (query) showResults(query);
+                else document.getElementById('results').innerHTML = '';
+            }, 200);
+        };
+
+        document.getElementById('search-input').onkeydown = (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (activeIndex < currentResults.length - 1) {
+                    activeIndex++;
+                    updateActiveItem();
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (activeIndex > 0) {
+                    activeIndex--;
+                    updateActiveItem();
+                }
+            } else if (e.key === 'Enter') {
+                if (activeIndex >= 0 && currentResults[activeIndex]) {
+                    selectTicker(currentResults[activeIndex]);
+                } else {
+                    const ticker = e.target.value.trim().toUpperCase();
+                    if (ticker) selectTicker(ticker);
+                }
+            }
+        };
+
+        document.getElementById('clear-btn').onclick = () => {
+            document.getElementById('search-input').value = '';
+            document.getElementById('clear-btn').style.display = 'none';
+            document.getElementById('results').innerHTML = '';
+            currentResults = [];
+            activeIndex = -1;
+            document.getElementById('search-input').focus();
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.getElementById('search-overlay').style.display = 'none';
+                return;
+            }
+
+            const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+            const isAlphanumeric = /^[a-zA-Z0-9]$/.test(e.key);
+
+            if (!isInput && isAlphanumeric) {
+                e.preventDefault();
+                openSearch(e.key.toUpperCase());
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            const overlay = document.getElementById('search-overlay');
+            const menu = document.getElementById('menu-overlay');
+
+            if (overlay.style.display === 'block' && !overlay.contains(e.target) && !e.target.classList.contains('add-symbol') && e.target.id !== 'ticker-btn') {
+                overlay.style.display = 'none';
+            }
+
+            if (menu.style.display === 'block' && !menu.contains(e.target) && !e.target.classList.contains('nav-icon')) {
+                menu.style.display = 'none';
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            updateChartSize();
+            chart.applyOptions({ height: window.innerHeight - 45 });
+        });
+
+        // Load saved preferences
+        const savedTheme = localStorage.getItem('darkTheme');
+        if (savedTheme === 'false') {
+            document.body.classList.add('light-theme');
+            document.getElementById('theme-toggle').classList.remove('active');
+            updateChartTheme();
+        }
+
+        const savedDrawings = localStorage.getItem('drawingsVisible');
+        if (savedDrawings === 'false') {
+            toggleDrawings();
+        }
+
+        loadTicker('NVDA');
+    </script>
+</body>
+</html>
